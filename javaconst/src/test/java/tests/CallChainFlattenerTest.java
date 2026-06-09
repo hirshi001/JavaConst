@@ -1,7 +1,6 @@
 package tests;
 
 import com.hirshi001.constcheck.CallChainFlattener;
-import com.hirshi001.constcheck.ConstRules;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.VariableTree;
@@ -10,9 +9,12 @@ import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import util.JavaSourceFromString;
 
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
 import javax.tools.JavaCompiler;
 import javax.tools.StandardJavaFileManager;
@@ -25,6 +27,29 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class CallChainFlattenerTest {
+    private static final Logger log = LoggerFactory.getLogger(CallChainFlattenerTest.class);
+
+    private static final String CONST_ANNOTATION = "com.hirshi001.constcheck.Const";
+    private static final String CONST_FUN_ANNOTATION = "com.hirshi001.constcheck.ConstFun";
+
+    private static boolean hasAnnotation(Element element, String annotation) {
+        if (element == null) return false;
+        return element.getAnnotationMirrors().stream()
+                .anyMatch(a -> a.getAnnotationType().toString().equals(annotation));
+    }
+
+    private static boolean isConstMethod(ExecutableElement method) {
+        return hasAnnotation(method, CONST_FUN_ANNOTATION);
+    }
+
+    private static boolean isConstReturnType(ExecutableElement method) {
+        return hasAnnotation(method, CONST_ANNOTATION);
+    }
+
+    private static boolean isConstVariable(VariableElement variable) {
+        return hasAnnotation(variable, CONST_ANNOTATION);
+    }
+
 
     @Test
     public void testFlattenCollectsCallChainInOrder() throws Exception {
@@ -100,7 +125,7 @@ public class CallChainFlattenerTest {
             List<CallChainFlattener.CallStep> steps =
                     CallChainFlattener.flatten(rootChainCall, Trees.instance(task), task.getTypes());
 
-            System.out.println(steps);
+            log.info("Flattened call steps: {}", steps);
 
 
             assertEquals(3, steps.size(), "Expected m1 -> m2 -> m3");
@@ -108,18 +133,18 @@ public class CallChainFlattenerTest {
             assertEquals("m2", steps.get(1).method().getSimpleName().toString());
             assertEquals("m3", steps.get(2).method().getSimpleName().toString());
 
-            assertEquals(false, ConstRules.isConstMethod(steps.get(0).method()));
-            assertEquals(false, ConstRules.isConstMethod(steps.get(1).method()));
-            assertEquals(false, ConstRules.isConstMethod(steps.get(2).method()));
+            assertEquals(false, isConstMethod(steps.get(0).method()));
+            assertEquals(false, isConstMethod(steps.get(1).method()));
+            assertEquals(false, isConstMethod(steps.get(2).method()));
 
-            assertEquals(true, ConstRules.isConstReturnType(steps.get(0).method()));
+            assertEquals(true, isConstReturnType(steps.get(0).method()));
 
             VariableElement constAElement = variables.stream()
                     .filter(v -> v.getSimpleName().contentEquals("constA"))
                     .findFirst()
                     .orElse(null);
             assertNotNull(constAElement, "Expected to find local variable constA");
-            assertEquals(true, ConstRules.isConstVariable(constAElement));
+            assertEquals(true, isConstVariable(constAElement));
         }
     }
 
@@ -183,7 +208,7 @@ public class CallChainFlattenerTest {
 
             List<CallChainFlattener.CallStep> outerSteps =
                     CallChainFlattener.flatten(outerCall, Trees.instance(task), task.getTypes());
-            System.out.println(outerSteps);
+            log.info("Flattened outer call steps: {}", outerSteps);
             assertEquals(3, outerSteps.size(), "Expected a -> b -> c");
             assertEquals("a", outerSteps.get(0).method().getSimpleName().toString());
             assertEquals("b", outerSteps.get(1).method().getSimpleName().toString());
